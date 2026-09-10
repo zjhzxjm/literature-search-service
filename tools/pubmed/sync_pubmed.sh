@@ -1,5 +1,5 @@
 #!/bin/bash
-# 每次仅同步下一个文件；下载进度不代表服务导入进度。
+# 按编号追平本轮上游目录快照；下载进度不代表服务导入进度。
 set -euo pipefail
 
 BASE_DIR="${BASE_DIR:-/share/data10/huggingface/pubmed/2026/updatefiles}"
@@ -10,7 +10,7 @@ RETRY_DELAY="${RETRY_DELAY:-10}"
 IO_TIMEOUT="${IO_TIMEOUT:-60}"
 DOWNLOAD_TIMEOUT="${DOWNLOAD_TIMEOUT:-1800}"
 
-for command in wget md5sum flock timeout mktemp mv rm cat date sleep; do
+for command in wget md5sum flock timeout mktemp mv rm cat date sleep grep sed sort; do
     command -v "${command}" >/dev/null || { echo "缺少依赖: ${command}" >&2; exit 1; }
 done
 for value in "${MAX_RETRIES}" "${IO_TIMEOUT}" "${DOWNLOAD_TIMEOUT}"; do
@@ -40,13 +40,10 @@ if [[ ! "${CURRENT_IDX}" =~ ^[0-9]{1,8}$ ]]; then
     log "错误: lastest 缺失或不是有效的非负数字编号，未下载"
     exit 1
 fi
-NEXT_IDX=$((10#${CURRENT_IDX} + 1))
-FILENAME="${FILE_PREFIX}${NEXT_IDX}.xml.gz"
-PART="${FILENAME}.part"
-MD5_PART="${FILENAME}.md5.part"
-STATS="${FILE_PREFIX}${NEXT_IDX}_stats.html"
+CURRENT_IDX=$((10#${CURRENT_IDX}))
 STATE_TMP=""
-trap 'if [[ -n "${STATE_TMP}" ]]; then rm -f -- "${STATE_TMP}"; fi' EXIT
+LIST_TMP=""
+trap 'if [[ -n "${STATE_TMP}" ]]; then rm -f -- "${STATE_TMP}"; fi; if [[ -n "${LIST_TMP}" ]]; then rm -f -- "${LIST_TMP}"; fi' EXIT
 
 # 每次 wget 只尝试一次，由外层负责重试。总时限也覆盖持续缓慢传输。
 fetch() {
@@ -117,28 +114,77 @@ attempt_download() {
     log "校验成功: ${FILENAME}"
 }
 
+# 每轮只获取一次目录快照，运行中新增的文件留到下一轮。
+LIST_TMP=$(mktemp "${PWD}/.sync_pubmed.list.XXXXXX")
+listing_ok=no
 for ((attempt=1; attempt<=MAX_RETRIES; attempt++)); do
-    log "开始尝试下载 ${FILENAME} (第 ${attempt}/${MAX_RETRIES} 次)"
-    if attempt_download; then
-        # stats 是辅助文件；失败明确告警，但不阻塞已校验 XML 的进度。
-        if fetch "${STATS}" "${STATS}.part" no "${IO_TIMEOUT}"; then
-            if ! mv -f -- "${STATS}.part" "${STATS}"; then
-                log "警告: 无法保存统计 HTML，XML 校验已成功"
-            fi
-        else
-            log "警告: 统计 HTML 未取得，XML 校验已成功"
-        fi
-        STATE_TMP=$(mktemp "${LAST_FILE}.tmp.XXXXXX")
-        printf '%s\n' "${NEXT_IDX}" > "${STATE_TMP}"
-        mv -f -- "${STATE_TMP}" "${LAST_FILE}"
-        STATE_TMP=""
-        log "更新索引至 ${NEXT_IDX}"
-        exit 0
+    if fetch "" "${LIST_TMP}" no "${IO_TIMEOUT}"; then
+        listing_ok=yes
+        break
     fi
-    if (( attempt < MAX_RETRIES )); then
-        log "等待 ${RETRY_DELAY} 秒后重试 ${FILENAME}"
-        sleep "${RETRY_DELAY}"
-    fi
+    if (( attempt < MAX_RETRIES )); then sleep "${RETRY_DELAY}"; fi
 done
-log "错误: 达到最大重试次数，下载 ${FILENAME} 失败，lastest 保持 ${CURRENT_IDX}"
-exit 1
+if [[ "${listing_ok}" != yes ]]; then
+    log "错误: 无法读取上游目录，lastest 保持 ${CURRENT_IDX}"
+    exit 1
+fi
+# 只解析当前年度的 XML 下载链接，排除摘要、统计文件及页面中的其他数字。
+if ! indices=$(grep -oE "href=[\"']${FILE_PREFIX}[0-9]{1,8}\\.xml\\.gz[\"']" "${LIST_TMP}" |
+    sed -E 's/.*n([0-9]+)\.xml\.gz.*/\1/' | sort -nu); then
+    log "错误: 上游目录没有可识别的 ${FILE_PREFIX} XML 链接，lastest 保持 ${CURRENT_IDX}"
+    exit 1
+fi
+declare -A available
+LATEST_IDX=0
+while IFS= read -r idx; do
+    idx=$((10#${idx}))
+    available[${idx}]=yes
+    if (( idx > LATEST_IDX )); then LATEST_IDX=${idx}; fi
+done <<< "${indices}"
+if (( CURRENT_IDX > LATEST_IDX )); then
+    log "错误: 本地编号 ${CURRENT_IDX} 超过上游最大编号 ${LATEST_IDX}，请检查年度或目录"
+    exit 1
+fi
+log "本轮同步范围: 当前=${CURRENT_IDX}，上游=${LATEST_IDX}，待处理=$((LATEST_IDX - CURRENT_IDX))"
+while (( CURRENT_IDX < LATEST_IDX )); do
+    NEXT_IDX=$((CURRENT_IDX + 1))
+    if [[ "${available[${NEXT_IDX}]:-}" != yes ]]; then
+        log "错误: 上游目录缺少连续编号 ${NEXT_IDX}，停止且不跳号，lastest 保持 ${CURRENT_IDX}"
+        exit 1
+    fi
+    FILENAME="${FILE_PREFIX}${NEXT_IDX}.xml.gz"
+    PART="${FILENAME}.part"
+    MD5_PART="${FILENAME}.md5.part"
+    STATS="${FILE_PREFIX}${NEXT_IDX}_stats.html"
+    downloaded=no
+    for ((attempt=1; attempt<=MAX_RETRIES; attempt++)); do
+        log "开始尝试下载 ${FILENAME} (第 ${attempt}/${MAX_RETRIES} 次)"
+        if attempt_download; then
+            downloaded=yes
+            break
+        fi
+        if (( attempt < MAX_RETRIES )); then
+            log "等待 ${RETRY_DELAY} 秒后重试 ${FILENAME}"
+            sleep "${RETRY_DELAY}"
+        fi
+    done
+    if [[ "${downloaded}" != yes ]]; then
+        log "错误: 达到最大重试次数，下载 ${FILENAME} 失败，lastest 保持 ${CURRENT_IDX}"
+        exit 1
+    fi
+    # stats 是辅助文件；失败明确告警，但不阻塞已校验 XML 的进度。
+    if fetch "${STATS}" "${STATS}.part" no "${IO_TIMEOUT}"; then
+        if ! mv -f -- "${STATS}.part" "${STATS}"; then
+            log "警告: 无法保存统计 HTML，XML 校验已成功"
+        fi
+    else
+        log "警告: 统计 HTML 未取得，XML 校验已成功"
+    fi
+    STATE_TMP=$(mktemp "${LAST_FILE}.tmp.XXXXXX")
+    printf '%s\n' "${NEXT_IDX}" > "${STATE_TMP}"
+    mv -f -- "${STATE_TMP}" "${LAST_FILE}"
+    STATE_TMP=""
+    CURRENT_IDX=${NEXT_IDX}
+    log "更新索引至 ${CURRENT_IDX}"
+done
+log "本轮已追平: lastest=${CURRENT_IDX}，上游快照=${LATEST_IDX}"

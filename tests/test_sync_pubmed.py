@@ -35,7 +35,8 @@ def runner(tmp_path):
     data = tmp_path / "data"
     data.mkdir()
     (data / "lastest").write_text("1571\n")
-    state = {"requests": [], "xml_count": 0, "mode": "ok", "entered": threading.Event()}
+    state = {"requests": [], "xml_count": 0, "mode": "ok", "entered": threading.Event(),
+             "indices": [1572], "fail_name": None}
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -45,9 +46,22 @@ def runner(tmp_path):
             name = self.path.lstrip("/")
             state["requests"].append((name, self.headers.get("Range")))
             mode = state["mode"]
-            if name.endswith(".md5"):
+            if not name:
+                if mode == "listing_failure":
+                    self.send_error(503)
+                    return
+                body = "\n".join(
+                    f'<a href="pubmed26n{i}.xml.gz">pubmed26n{i}.xml.gz</a> 2026-09-10'
+                    for i in state["indices"]
+                ).encode()
+                if mode == "bad_listing":
+                    body = b"<html>upstream maintenance</html>"
+            elif name == state["fail_name"]:
+                self.send_error(503)
+                return
+            elif name.endswith(".md5"):
                 digest = hashlib.md5(BODY).hexdigest()
-                target = "../elsewhere" if mode == "wrong_name" else NAME
+                target = "../elsewhere" if mode == "wrong_name" else name.removesuffix(".md5")
                 body = f"MD5({target})= {digest}\n".encode()
                 if mode == "gnu_md5":
                     body = f"{digest}  {target}\n".encode()
@@ -63,6 +77,8 @@ def runner(tmp_path):
                 body = b"synthetic stats"
             else:
                 state["xml_count"] += 1
+                if mode == "new_publication":
+                    state["indices"] = [1572, 1573]
                 state["entered"].set()
                 if mode == "network_failure":
                     self.send_error(503)
@@ -203,3 +219,70 @@ def test_missing_state_stops_before_network(runner):
     assert run().returncode != 0
     assert state["requests"] == []
     assert "无法读取 lastest" in (data / "sync.log").read_text()
+
+
+def test_multiple_same_day_files_sorted_and_deduplicated(runner):
+    run, data, state, _ = runner
+    state["indices"] = [1574, 1572, 1573, 1572]
+    assert run().returncode == 0
+    assert (data / "lastest").read_text() == "1574\n"
+    assert [n for n, _ in state["requests"] if n.endswith(".xml.gz")] == [
+        f"pubmed26n{i}.xml.gz" for i in (1572, 1573, 1574)]
+    assert not list(data.glob(".sync_pubmed.list.*"))
+
+
+def test_middle_failure_stops_then_next_run_recovers(runner):
+    run, data, state, _ = runner
+    state["indices"] = [1572, 1573, 1574]
+    state["fail_name"] = "pubmed26n1573.xml.gz"
+    assert run().returncode == 1
+    assert (data / "lastest").read_text() == "1572\n"
+    assert not any("1574" in n for n, _ in state["requests"])
+    state["requests"].clear()
+    state["fail_name"] = None
+    assert run().returncode == 0
+    assert (data / "lastest").read_text() == "1574\n"
+    assert not any("1572" in n for n, _ in state["requests"])
+
+
+def test_already_current_does_not_request_unpublished_file(runner):
+    run, data, state, _ = runner
+    state["indices"] = [1571]
+    assert run().returncode == 0
+    assert state["requests"] == [("", None)]
+    assert "本轮已追平" in (data / "sync.log").read_text()
+
+
+@pytest.mark.parametrize("mode", ["listing_failure", "bad_listing"])
+def test_unusable_directory_is_failure_not_up_to_date(runner, mode):
+    run, data, state, _ = runner
+    assert run(mode).returncode == 1
+    assert (data / "lastest").read_text() == "1571\n"
+    assert state["xml_count"] == 0
+    assert not list(data.glob(".sync_pubmed.list.*"))
+
+
+def test_gap_in_directory_never_skips_id(runner):
+    run, data, state, _ = runner
+    state["indices"] = [1572, 1574]
+    assert run().returncode == 1
+    assert (data / "lastest").read_text() == "1572\n"
+    assert not any("1574" in n for n, _ in state["requests"])
+
+
+def test_snapshot_does_not_expand_during_run(runner):
+    run, data, state, _ = runner
+    assert run("new_publication").returncode == 0
+    assert (data / "lastest").read_text() == "1572\n"
+    assert state["indices"] == [1572, 1573]
+    assert not any("1573" in n for n, _ in state["requests"])
+    assert run().returncode == 0
+    assert (data / "lastest").read_text() == "1573\n"
+
+
+def test_local_ahead_of_directory_is_reported(runner):
+    run, data, state, _ = runner
+    state["indices"] = [1570]
+    assert run().returncode == 1
+    assert (data / "lastest").read_text() == "1571\n"
+    assert state["xml_count"] == 0
