@@ -2,7 +2,7 @@
 # 按编号追平本轮上游目录快照；下载进度不代表服务导入进度。
 set -euo pipefail
 
-BASE_DIR="${BASE_DIR:-/share/data10/huggingface/pubmed/2026/updatefiles}"
+BASE_DIR="${BASE_DIR:?Set BASE_DIR to an existing PubMed updatefiles directory}"
 FILE_PREFIX="${FILE_PREFIX:-pubmed26n}"
 URL_PREFIX="${URL_PREFIX:-https://ftp.ncbi.nlm.nih.gov/pubmed/updatefiles}"
 MAX_RETRIES="${MAX_RETRIES:-3}"

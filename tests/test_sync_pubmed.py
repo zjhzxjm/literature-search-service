@@ -16,6 +16,19 @@ NAME = "pubmed26n1572.xml.gz"
 BODY = b"synthetic compressed-file stand-in\n" * 100
 
 
+@pytest.mark.parametrize("value", [None, ""])
+def test_base_dir_required_before_side_effects(tmp_path, value):
+    env = os.environ.copy()
+    env.pop("BASE_DIR", None)
+    if value is not None:
+        env["BASE_DIR"] = value
+    result = subprocess.run(["bash", str(SCRIPT)], env=env, cwd=tmp_path,
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Set BASE_DIR" in result.stderr
+    assert not list(tmp_path.iterdir())
+
+
 @pytest.fixture
 def runner(tmp_path):
     if any(not shutil.which(tool) for tool in ("bash", "wget", "timeout", "md5sum")):

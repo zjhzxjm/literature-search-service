@@ -1,0 +1,39 @@
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+.venv/
+venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# JavaScript dependencies
+node_modules/
+
+# Local runtime data and experiment output
+/data/
+/es-data/
+/es-logs/
+/logs/
+/runs/
+/local/
+*.log
+*.pid
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Python packaging output
+*.egg-info/
+/build/
+/dist/

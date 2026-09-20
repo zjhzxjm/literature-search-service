@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!DOCTYPE PubmedArticleSet SYSTEM "https://example.invalid/pubmed.dtd">
+<PubmedArticleSet>
+  <PubmedArticle><MedlineCitation><PMID Version="1">101</PMID><Article>
+    <ArticleTitle>Effect of <i>synthetic</i> A on X<sup>2</sup>.</ArticleTitle>
+    <Abstract><AbstractText Label="RESULTS" NlmCategory="RESULTS">A &amp; B <b>reduced</b> inflammation.</AbstractText><AbstractText Label="CONCLUSION">Synthetic example.</AbstractText><CopyrightInformation>Fixture only.</CopyrightInformation></Abstract>
+  </Article><OtherAbstract Type="plain-language-summary"><AbstractText>Do not merge me.</AbstractText></OtherAbstract></MedlineCitation></PubmedArticle>
+  <DeleteCitation><PMID Version="1">101</PMID><PMID Version="1">999</PMID></DeleteCitation>
+  <PubmedArticle><MedlineCitation><PMID Version="2">101</PMID><Article><ArticleTitle>Replacement</ArticleTitle></Article></MedlineCitation></PubmedArticle>
+</PubmedArticleSet>
