@@ -22,6 +22,31 @@
 
 `lastest` 沿用原拼写，必须预先保存最后连续成功文件的非负数字编号（最多八位）。缺失或无效时停止，不自行猜测起点。切换年度时须同时调整目录、文件名前缀及起始编号。
 
+## Linux 运行与迁移步骤
+
+通用 Linux 主机接入顺序：
+
+1. 确认原生工具链：Bash 4+、GNU wget、GNU coreutils（`timeout`、`md5sum`）、util-linux `flock`。用 `command -v flock` 与 `python3 -c "import shutil; print(shutil.which('flock'))"` 确认解析到系统路径而非自制 shim；缺原生工具时先由管理员安装，不以替代实现上线。
+2. 把脚本放进与数据目录分离的独立位置（随仓库 checkout，或仅复制 `tools/pubmed/sync_pubmed.sh`），核对脚本 SHA-256 与交付版本一致。
+3. 操作员准备已存在的数据目录：写入 `lastest`（最后连续成功编号），核对或迁入既有年度文件，执行用户对该目录有写权限。
+4. 接入真实目录前，先在隔离 checkout 完成本文件“本地验证”一节的命令。
+5. 首次运行显式设置 `BASE_DIR` 并观察 `sync.log` 的追平与进度推进，确认后再交给调度。
+
+变量化运行示例（路径为占位，由操作员替换）：
+
+```sh
+BASE_DIR=/srv/pubmed/updatefiles FILE_PREFIX=pubmed26n \
+  bash /opt/pubmed-sync/sync_pubmed.sh
+```
+
+crontab 条目同样必须显式传入 `BASE_DIR`（仅示例，不构成部署指令）：
+
+```cron
+17 3 * * * BASE_DIR=/srv/pubmed/updatefiles /usr/bin/bash /opt/pubmed-sync/sync_pubmed.sh
+```
+
+从旧 cron 版本迁移时按顺序执行：先让旧实例结束（停止旧 cron 触发、等待或终止旧进程、手工补齐完成），再由操作员设置新的 `BASE_DIR` 并迁移 `lastest` 与年度文件，最后替换脚本版本并恢复调度。`BASE_DIR` 未设置或为空会在任何网络与文件操作前失败；迁移期间不要以空值临时运行。
+
 ## 下载与恢复行为
 
 1. 使用 `.sync_pubmed.lock` 防止新版脚本重叠运行。锁占用时返回 75，其余锁错误保留原退出码；锁文件不应删除，进程退出自动释放锁。
@@ -66,3 +91,14 @@ macOS 没有 util-linux `flock` 时，测试使用 Python `fcntl.flock` 对继�
 ### 多文件版本验证
 
 本地 `bash -n` 与 `git diff --check` 通过；26 项隔离测试通过，测试临时目录已自动清理。新增同日多个编号的排序与去重、中途失败后下次恢复、已追平、目录请求失败、目录无法解析、缺号停止、运行中新增文件留到下一轮、本地进度超过上游等隔离用例。单文件版本的真实 NCBI 下载记录只证明当时的下载与校验流程，不代表新循环已做全量实测。
+
+## 目标 Linux 验证记录
+
+### 2026-09-20 隔离 Linux 环境验证（基线 8e11bcb，#12）
+
+- 主机：隔离 Ubuntu 22.04.2 LTS，项目 venv 内 Python 3.12.10。工具链：GNU Bash 5.1.16、GNU Wget 1.21.2、GNU coreutils 8.32（`timeout`/`md5sum`）、util-linux `flock` 2.37.2。
+- `shutil.which('flock')` 解析到 `/usr/bin/flock`，`dpkg -S` 确认属 util-linux 包；锁互斥与释放用例使用原生 `flock`，未启用 Python shim。
+- 命令与结果：`.venv/bin/python -m pip install -e '.[test]'` 成功；`bash -n tools/pubmed/sync_pubmed.sh` 通过；`.venv/bin/python -m pytest -q tests/test_sync_pubmed.py` 收集 28 项、全部通过、零跳过（17.66s）；`git diff --check` 通过。全量 `.venv/bin/python -m pytest -q` 为 77 通过、1 跳过（未配置一次性真实 Elasticsearch 实例的集成用例，符合预期）。
+- 被测脚本 SHA-256：`450a632d1ea8df95ca7ef52ae08f5bcb49e92e637c4de09b3edca1c5aa9dae00`，与基线 `8e11bcb` 的 `tools/pubmed/sync_pubmed.sh` 一致，下载器行为未被修改。
+- 覆盖确认：两种 MD5 格式、断线续传（当轮重试与下次调用）、损坏重下、失败不推进、进度恢复、目录快照固定、缺号停链、锁互斥与释放，以及 `BASE_DIR` 缺失或为空在任何文件与网络操作前失败，均有对应通过用例。
+- 未执行指向真实 PubMed 数据目录或默认 NCBI 地址的同步；未修改 crontab、生产目录或共享数据；验证所用 checkout、venv 与临时数据在记录汇总后清理。
