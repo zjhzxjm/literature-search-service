@@ -10,7 +10,7 @@ owner code, tests, and docs/roadmap.md before changing contracts.
   into the roadmap. Keep stable contracts and operator guidance in the repository.
 - dev is the integration branch. Use one task branch and PR per coherent change.
   Initial repository bootstrap is committed directly to dev; subsequent work uses PRs.
-- johnmuin is a future execution assistant. Only an open issue explicitly assigned
+- johnmuin is the execution assistant. Only an open issue explicitly assigned
   to johnmuin with `Execution gate: READY` authorizes work. A later owner HOLD wins.
   Unassigned issues and milestone checklists are not execution instructions.
 - Work on one assigned issue at a time unless the owner explicitly permits parallel work.
@@ -31,4 +31,10 @@ owner code, tests, and docs/roadmap.md before changing contracts.
 - Do not add CI, workflows or automatic paid/remote experiments as part of ordinary
   tasks; propose them separately. Local mocked tests are not real-backend acceptance.
 - Material storage, truncation, update, deployment or resource decisions require
-  owner agreement. Existing indexes are experimental assets, not production truth.
+  owner agreement. The owner selected the existing full baseline indexes as the
+  first full-corpus version; preserve their current encoding/truncation settings.
+  This selection does not establish HTTP, downstream or production acceptance.
+  First-version delivery must not wait for a rebuild. In parallel, the owner has
+  requested truncation repair and a new baseline by johnmuin under issue #7;
+  freeze the encoding contract and resource plan, then validate a bounded sample
+  before the full run. Preserve the old assets; service cutover is a separate step.
