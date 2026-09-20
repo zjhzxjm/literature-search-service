@@ -23,6 +23,18 @@ supervisor、十路查询、文本库或部署。原始实验资产保持原状�
 M3 可恢复每日更新；M4 HTTP、发布切换与运行验收。具体 issue 不代表运行授权；
 大型实验与存储语义保留原有决策门槛。
 
+| GitHub milestone | 首批 issues |
+|---|---|
+| [M1 开发基线与构建工具](https://github.com/zjhzxjm/literature-search-service/milestone/1) | #1 环境、#2 分片、#3 supervisor、#4 恢复 |
+| [M2 同版本全量查询](https://github.com/zjhzxjm/literature-search-service/milestone/2) | #5 版本合同、#6 查询、#7 截断、#8 性能、#9 清单、#10 ES |
+| [M3 每日更新](https://github.com/zjhzxjm/literature-search-service/milestone/3) | #11 增量语义、#12 下载器 Linux 验收 |
+| [M4 HTTP 与发布](https://github.com/zjhzxjm/literature-search-service/milestone/4) | #13 HTTP、#14 切换、#15 许可与公开历史 |
+
+依赖顺序：#5 冻结版本与文本职责后，#2/#6/#9 落地正式版本清单；#1 先验证运行环境。
+#7/#8 先冻结小样本协议，不直接触发全量重建。#11 依赖 #5 与检索闭环，#13/#14
+依赖检索和更新验收。#10/#12 可在专用隔离环境准备后独立进行。
+任务详情与最新 gate 以 [issues](https://github.com/zjhzxjm/literature-search-service/issues) 为准。
+
 ## 目标与边界
 
 从已下载的 PubMed baseline 和 updatefiles 建立可持续维护的文献检索服务：年度重建，年内按来源顺序应用新增、修订、删除；支持 ColBERT 与 Elasticsearch，配置 ColBERT 时优先使用，运行失败不静默回退。
