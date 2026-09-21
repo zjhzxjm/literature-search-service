@@ -46,9 +46,8 @@ def _load_keywords(values: Iterable[str], keyword_file: Path | None) -> tuple[st
     return tuple(cleaned)
 
 
-def _matches(text: str, keywords: tuple[str, ...], mode: str, case_sensitive: bool) -> bool:
+def _matches(text: str, needles: tuple[str, ...], mode: str, case_sensitive: bool) -> bool:
     haystack = text if case_sensitive else text.casefold()
-    needles = keywords if case_sensitive else tuple(keyword.casefold() for keyword in keywords)
     tests = (needle in haystack for needle in needles)
     return all(tests) if mode == "all" else any(tests)
 
@@ -75,6 +74,7 @@ def filter_inputs(
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     temp = Path(tempfile.mkdtemp(prefix=f".{output.name}.tmp-", dir=output.parent))
+    needles = keywords if case_sensitive else tuple(keyword.casefold() for keyword in keywords)
     source_text_hash = hashlib.sha256()
     source_map_hash = hashlib.sha256()
     filtered_text_hash = hashlib.sha256()
@@ -104,7 +104,7 @@ def filter_inputs(
                 if mapped_pid != source_pid or pmid == 0:
                     raise ValueError(f"Invalid mapping row {source_pid}")
 
-                if _matches(text, keywords, mode, case_sensitive):
+                if _matches(text, needles, mode, case_sensitive):
                     new_line = f"{matched_count}\t{text}\n".encode("utf-8")
                     new_pair = struct.pack("<QQ", matched_count, pmid)
                     filtered_texts.write(new_line)
