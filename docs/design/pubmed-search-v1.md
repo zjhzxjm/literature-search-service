@@ -1,8 +1,24 @@
 # PubMed 文献检索服务首版设计
 
-状态：首版结构与运行方式已确认，实施中。确认采用 Python/FastAPI、本地 SQLite 导入账本、独立导入 CLI、单导入写者及每日批次逐步可见；检索接口保留 ColBERT 与 Elasticsearch，优先 ColBERT。确认不等于全量建库或部署授权。
+状态：实施中。2026-09-21 起正式检索路线为 Jina-ColBERT-v2；Elasticsearch 仅保留 legacy/reference 适配。专题库与增量先于 RTX3060 全量 baseline。确认不等于全量建库或部署授权。
 
 当前实施第一个增量：PubMed 核心字段解析、SciClaims Elasticsearch 查询对照及 ColBERT 接口适配。不开展双检索器评测；后续导入账本、HTTP API 和年度切换按增量推进。
+
+## 2026-09-21 当前检索路线覆盖声明
+
+项目正式技术路线已经切换为 **Jina-ColBERT-v2**。本文件后续仍保留早期 SciClaims / Elasticsearch / 通用 ColBERT 设计背景，便于追溯来源，但这些章节不再表示当前默认实现路线。
+
+当前正式合同：
+
+- 文档编码模型：`jinaai/jina-colbert-v2`；
+- 冻结验证 revision：`a9dc5cd7293d4c71dbbba04829923ba4d0e4f6ea`；
+- 索引/检索引擎继续使用 Stanford ColBERT/colbert-ai；
+- 默认文档窗口 8192，dim=128，nbits=2，query_maxlen=32；
+- Search factory 使用 `jina_options`，结果 backend 标识 `jina-colbert-v2`；
+- Elasticsearch 仅保留为 legacy/reference 适配，不属于当前专题库与全量 baseline 主线；
+- 当前先完成关键词专题库首次建立与 updatefiles 增量，RTX3060 全量 baseline 后置。
+
+后续若本文件中的“ColBERT”通用描述与上述合同冲突，以上述当前合同和 [roadmap](../roadmap.md) 为准。
 
 ## 已确认范围
 
