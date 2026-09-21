@@ -1,38 +1,68 @@
 # 首版交付路线图
 
-状态：2026-09-21 已重新收敛 GitHub milestones。首版固定快照交付与 Jina 新 baseline 并行推进；每日更新、构建可靠性和质量/发布完善保持后续独立里程碑。具体运行授权仍以 issue 的 Execution gate 为准。
+状态：2026-09-21 技术路线已正式切换为 Jina-ColBERT-v2。旧 ColBERTv2 截断修复、十片查询/恢复/supervisor 等路线已停止；当前先完成关键词专题库建立与专题增量建库，RTX3060 全量 baseline 明确后置。
 
-本文维护总体目标、增量依赖及稳定合同；GitHub milestones/issues 维护当前任务、决策和验收进度，PR 维护代码审查。字段、上游代码和技术约束见[设计文档](design/pubmed-search-v1.md)。
+本文维护总体目标、稳定合同与当前执行顺序；GitHub issue/PR 是最新执行状态来源。任何 milestone 归属都不自动授权 GPU、全量数据写入、部署或生产切换。
 
-## 2026-09-21 milestone 收敛
+## 2026-09-21 路线收敛：Jina 专题库优先
 
-当前只保留五条清晰工作线：
+当前唯一主线：
 
-| GitHub milestone | 当前职责 | 活跃 issues |
+```
+冻结 PubMed 全量 corpus
+  → 关键词筛选专题文章
+  → Jina 专题库首次建立
+  → 专题库增量新增/修订/删除
+  → RTX3060/WSL2 代表性门禁
+  → Jina 39.9M 全量 baseline
+```
+
+### 当前活跃任务
+
+| 顺序 | 任务 | 作用 |
 |---|---|---|
-| [M1 首个下游可用版本](https://github.com/zjhzxjm/literature-search-service/milestone/1) | 复用现有 10 片 baseline，完成固定快照的真实查询、PMID/同版本文本与最小 HTTP 闭环 | #1、#5、#6、#9、#13 |
-| [M2 数据更新闭环](https://github.com/zjhzxjm/literature-search-service/milestone/2) | 新增/修订/删除、来源顺序、重放和失败进度 | #11；#12 已完成 |
-| [M3 构建与运行可靠性](https://github.com/zjhzxjm/literature-search-service/milestone/3) | 正式分片、资源 supervisor、恢复身份、年度切换/回退 | #2、#3、#4、#14 |
-| [M4 质量性能与发布](https://github.com/zjhzxjm/literature-search-service/milestone/4) | 冷暖查询、ES 对照、许可与公开历史 | #8、#10、#15 |
-| [M5 Jina 新 baseline](https://github.com/zjhzxjm/literature-search-service/milestone/5) | Jina-ColBERT-v2 长上下文新库、专题子库输入、RTX3060/WSL2 验收与最终全量重建 | #7、#24、#26、#28；PR #25/#27 |
+| 1 | #24 / PR #25 | 从冻结全量 collection/mapping 按关键词生成可复现专题建库输入 |
+| 2 | #26 / PR #27 | 正式 build CLI 支持并记录 Jina 8K checkpoint/参数 |
+| 3 | #30 | 专题库闭环：filter → verify → Jina build/coalesce → reload/query → topic manifest |
+| 4 | #11 | 专题库增量建库：PubMed updatefiles 的新增、修订、删除、重放和可恢复发布 |
+| 5 | #28 | **延期执行**：RTX3060/WSL2 代表性 10k 门禁；仅在 #30/#11 完成后启动 |
+| 6 | #7 | 父任务；#28 通过后再创建最终 39,928,371 条 Jina 全量执行 issue |
 
-### 当前优先级
+### 已退役的旧技术路线
 
-**主交付线 M1**：现有 39,928,371 条、10 片 ColBERTv2 baseline 继续作为首版资产，不等待新库。优先完成环境、快照/文本合同、十片查询归并、完整性拒绝和 HTTP 接入。
+以下工作不再继续实现，保留 issue/PR 仅作历史证据：
 
-**并行改进线 M5**：截断调查已经收敛到 Jina-ColBERT-v2。P40/GTE/512 路线只保留为历史证据，不再占活跃任务。当前顺序固定为：
+- 旧 ColBERTv2 Python/环境兼容首版；
+- 旧十片分片/offset/查询归并；
+- 旧 supervisor 和事故恢复脚本泛化；
+- 旧 10 片 baseline 的完整性/性能专项；
+- Elasticsearch 对照作为当前主路线；
+- 旧固定快照 HTTP 首版；
+- 旧年度切换/双版本方案；
+- doc_maxlen=512 全量重建；
+- P40 上长期构建 Jina；
+- GTE-ModernColBERT/PyLate 全量路线。
 
-1. PR #25：关键词筛选生成专题建库输入；
-2. PR #27：正式 build CLI 支持并记录 Jina 8K 配置；
-3. #28：RTX3060 + WSL2 上复用代表性 10k 做真实基准；
-4. #28 通过后才创建最终 39.9M 全量执行 issue；
-5. 新库独立验收后再讨论服务切换。
+对应旧 issues 已统一关闭为 `not planned`；实验资产和审查证据不删除。
 
-M5 已完成的证据任务包括 #18、#21、#22、#23 和 PR #19；#20 的 512 全量重建方案已被 Jina 路线替代并关闭。旧 PR #17 的截断修复路线同样已关闭，避免与当前方案并存。
+### Milestone 现状
 
-**后续线 M2–M4** 不阻塞 M1 首版固定快照；其中 M3 的可靠构建能力会在新 baseline 和年度生命周期阶段复用，M4 在真实服务可用后再做代表性性能/发布收尾。
+- **M5** 现在承载当前 Jina 主线：#7、#11、#24、#26、#28、#30，以及 PR #25/#27。
+- M1/M3 中原先面向旧 ColBERTv2 的实现任务已经退役；后续如 Jina 服务化需要新的 HTTP、发布、恢复任务，会基于新专题/增量合同重新创建，不复用旧问题描述。
+- M4 仅保留不依赖旧 ColBERTv2 的发布/许可类后续工作；不阻塞当前专题库主线。
 
-任务详情与最新 gate 以 [issues](https://github.com/zjhzxjm/literature-search-service/issues) 为准。Milestone 只表示工作归属，不自动授权 GPU、全量数据写入、部署或生产切换。
+### 为什么全量 baseline 后置
+
+全量 baseline 不再作为验证架构的手段。先在关键词筛选出的较小专题库上把：
+
+- 输入身份；
+- Jina 建库；
+- 查询重载；
+- PMID/文本版本；
+- updatefiles 增量；
+- 失败恢复与发布
+
+全部跑通。只有这套闭环稳定后，才把同样的正式代码扩大到 RTX3060 的 39.9M 全量 baseline，避免再次先花大量 GPU 时间再补工程合同。
 
 ## 目标与边界
 
@@ -155,4 +185,4 @@ R1 的 ES 真实对照可与 ColBERT 结果接收分别完成。优先收尾 Col
 
 状态依次区分：待讨论、可实施、实施中、待验收、已验收。通过验收后创建范围明确的提交；commit、push、合并、发布、部署和运行验收分别记录，不相互替代。当前没有任何增量因为单元测试通过而自动获得全量写入或部署许可。
 
-**当前执行顺序：M1 与 M5 并行。** M1 继续完成现有固定快照的查询/文本/HTTP 闭环；M5 先合并关键词筛选与 Jina 参数化 build 入口，再在 RTX3060/WSL2 上通过 #28 冻结全量参数，之后才授权新 Jina baseline 全量构建。M2–M4 按依赖顺序后续推进，不用旧路线阻塞当前两条主线。
+**当前执行顺序：Jina 专题库主线。** 先完成 #24/#26 的基础能力，再完成 #30 专题首次建库与 #11 专题增量；两者通过后才启动 #28 RTX3060 全量门禁。旧 ColBERTv2 相关路线不再恢复。
