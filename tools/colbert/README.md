@@ -13,13 +13,29 @@ python -m literature_search_service.colbert_build verify \
   --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED"
 ```
 
-`build` 需显式调用，使用预先安装的 ColBERT 和本地 checkpoint，输出目录必须不存在：
+`build` 需显式调用，使用预先安装的 ColBERT 和本地 checkpoint，输出目录必须不存在。默认参数继续兼容历史 ColBERTv2；长上下文 checkpoint 需要显式传入实际参数：
 
 ```sh
 python -m literature_search_service.colbert_build build \
   --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED" \
   --checkpoint "$CHECKPOINT" --output "$NEW_BUILD_DIR" --gpus 0 1 --doc-maxlen 256
 ```
+
+对于已经本地固定 revision 的 Jina-ColBERT-v2，可使用同一入口记录 8K 构建参数；下面只是参数示例，不代表 RTX3060 吞吐已经验收：
+
+```sh
+python -m literature_search_service.colbert_build build \
+  --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED" \
+  --checkpoint "$JINA_CHECKPOINT" --checkpoint-revision "$JINA_REVISION" \
+  --output "$NEW_BUILD_DIR" --gpus 0 \
+  --dim 128 --nbits 2 --doc-maxlen 8192 --query-maxlen 32 \
+  --index-bsize 8 --kmeans-niters 4
+```
+
+长上下文值不会仅凭 CLI 数字放行：工具会从本地 `config.json` /
+`tokenizer_config.json` 读取可用 context metadata；声明的 `doc_maxlen` 超过
+checkpoint 本地上限时会在启动 GPU 之前失败。若 checkpoint 没有可核验的上下文元数据，
+超过 512 的值同样拒绝。构建回执会保存 checkpoint config 哈希、可选 revision 和全部实际参数。
 
 该命令会使用 GPU、内存和磁盘，并生成索引。调用者必须提供资源隔离且保持输入不可变。
 GPU 编号相对于调用者的 CUDA_VISIBLE_DEVICES；不会自动安装、下载、启停服务或恢复旧目录。
