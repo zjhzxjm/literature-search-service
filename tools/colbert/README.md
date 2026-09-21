@@ -44,12 +44,8 @@ coalesce 使用 Indexer 返回的真实路径，通过同一 Python 的 `-m colb
 `coalesced_not_query_validated`，不能据此宣称查询验收完成。
 
 已测试输入验证、路径交接与失败记录；build/coalesce 测试使用替身。
-历史真实实验使用 Python 3.10.12，而本项目要求 Python >=3.11；新入口尚未完成目标
-环境真实小样本验证。先完成环境兼容 issue，再进行受限冒烟测试；不要直接跑全量。
+历史 ColBERTv2 256-token 实验、Python 3.10 环境和旧分片资产仅作为历史证据保留，
+见[实验复盘](../../docs/colbert-experiment-review.md)，不再作为当前 Jina profile 的默认值。
 
-固定实验参数为 dim=128、nbits=2、query_maxlen=32、index_bsize=64、kmeans_niters=4。
-doc_maxlen=256 是实验默认值；约 253 个正文子词后不进入向量，完整输入文件仍保留。
-模型与源码版本见[实验复盘](../../docs/colbert-experiment-review.md)。
-
-准备/分片、完整版本清单、资源 supervisor、恢复和多分片查询均由后续 issues 跟踪。
-不把旧事故脚本作为正常执行入口。
+当前 Jina profile 的真实专题库 build/reload/query 由 #30 验收；Claim→Evidence retrieval
+价值由 #32 与 Elasticsearch/BM25、MedCPT 同口径比较。完成价值门前不要启动全量建库。
