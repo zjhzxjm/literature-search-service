@@ -1,4 +1,4 @@
-# ColBERT 单分片实验工具
+# Jina-ColBERT-v2 建库工具
 
 包内入口：`python -m literature_search_service.colbert_build`。这是首次整理的
 实验入口，不是全量服务、通用恢复器或受资源监督的作业系统。
@@ -13,15 +13,15 @@ python -m literature_search_service.colbert_build verify \
   --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED"
 ```
 
-`build` 需显式调用，使用预先安装的 ColBERT 和本地 checkpoint，输出目录必须不存在。默认参数继续兼容历史 ColBERTv2；长上下文 checkpoint 需要显式传入实际参数：
+`build` 需显式调用，使用预先安装的 colbert-ai 和本地 Jina-ColBERT-v2 checkpoint，输出目录必须不存在。当前 dev 默认 profile 已切换为 Jina 8K：
 
 ```sh
 python -m literature_search_service.colbert_build build \
   --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED" \
-  --checkpoint "$CHECKPOINT" --output "$NEW_BUILD_DIR" --gpus 0 1 --doc-maxlen 256
+  --checkpoint "$JINA_CHECKPOINT" --output "$NEW_BUILD_DIR" --gpus 0
 ```
 
-对于已经本地固定 revision 的 Jina-ColBERT-v2，可使用同一入口记录 8K 构建参数；下面只是参数示例，不代表 RTX3060 吞吐已经验收：
+需要覆盖默认值时可显式传入全部参数；下面示例与当前冻结的 Jina profile 等价，不代表 RTX3060 吞吐已经验收：
 
 ```sh
 python -m literature_search_service.colbert_build build \
