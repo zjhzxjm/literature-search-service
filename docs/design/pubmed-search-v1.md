@@ -1,24 +1,30 @@
 # PubMed 文献检索服务首版设计
 
-状态：实施中。2026-09-21 起正式检索路线为 Jina-ColBERT-v2；Elasticsearch 仅保留 legacy/reference 适配。专题库与增量先于 RTX3060 全量 baseline。确认不等于全量建库或部署授权。
+状态：实施中。2026-09-21 起项目明确采用 **backend-agnostic** 检索架构。Elasticsearch/BM25 与 Jina-ColBERT-v2 均为正式支持的检索后端；Jina 是当前新增和工程化验证的候选，不是唯一主线。确认不等于全量建库或部署授权。
 
-当前实施第一个增量：PubMed 核心字段解析、SciClaims Elasticsearch 查询对照及 ColBERT 接口适配。不开展双检索器评测；后续导入账本、HTTP API 和年度切换按增量推进。
+当前已实现 PubMed 核心字段解析、SciClaims-style Elasticsearch 查询封装和 Jina/ColBERT 接口适配。后续通过 #32 的 Claim→Evidence Retrieval Value Gate 比较 backend，再决定增量和全量投入。
 
-## 2026-09-21 当前检索路线覆盖声明
+## 2026-09-21 当前检索后端合同
 
-项目正式技术路线已经切换为 **Jina-ColBERT-v2**。本文件后续仍保留早期 SciClaims / Elasticsearch / 通用 ColBERT 设计背景，便于追溯来源，但这些章节不再表示当前默认实现路线。
+本项目从 SciClaims 的 literature search 能力拆分而来，首要使用场景是 Claim → high-recall candidate literature retrieval。检索层不负责 SUPPORT / CONTRADICT / NEI 判定。
 
 当前正式合同：
 
-- 文档编码模型：`jinaai/jina-colbert-v2`；
-- 冻结验证 revision：`a9dc5cd7293d4c71dbbba04829923ba4d0e4f6ea`；
-- 索引/检索引擎继续使用 Stanford ColBERT/colbert-ai；
-- 默认文档窗口 8192，dim=128，nbits=2，query_maxlen=32；
-- Search factory 使用 `jina_options`，结果 backend 标识 `jina-colbert-v2`；
-- Elasticsearch 仅保留为 legacy/reference 适配，不属于当前专题库与全量 baseline 主线；
-- 当前先完成关键词专题库首次建立与 updatefiles 增量，RTX3060 全量 baseline 后置。
+- **Elasticsearch/BM25**：保留 SciClaims-style `title + abstract` 完整文本检索，作为一等 backend 和 Claim→Evidence baseline；
+- **Jina-ColBERT-v2**：作为 late-interaction 候选 backend，固定验证 model/revision 和 8K build profile；
+- **MedCPT**：后续在 #32 作为 biomedical retrieval 候选进入同口径评测，尚未成为已实现 backend；
+- Search factory 不使用“Jina 优先”或“ES fallback”的隐式优先级；只配置一个 backend 时可推断，同时配置多个时调用方必须显式选择；
+- 任一 backend 初始化失败均不得静默切换；
+- 各 backend 保留自己的原始 rank/score，score 不跨 backend 比较；
+- topic/corpus identity 与 backend-specific index identity 分离。
 
-后续若本文件中的“ColBERT”通用描述与上述合同冲突，以上述当前合同和 [roadmap](../roadmap.md) 为准。
+Jina 当前验证 profile：
+
+- model：`jinaai/jina-colbert-v2`；
+- revision：`a9dc5cd7293d4c71dbbba04829923ba4d0e4f6ea`；
+- doc_maxlen=8192，dim=128，nbits=2，query_maxlen=32，index_bsize=8，kmeans_niters=4。
+
+是否继续 Jina 专题增量和 39.9M 全量由 #32 的 Claim→Evidence evidence-document Recall@K 与工程成本共同决定。
 
 ## 已确认范围
 
@@ -44,7 +50,7 @@
 |---|---|---|
 | `sciclaims_backend/processing/es_indexing.py` 的 `ESSearcher.search` | `multi_match` 查询 `title`、`abstract`；返回整数 ID、零起始排名、原始 `_score` | 核心查询和结果语义复用 |
 | 同文件的 `index` 和 `main` | `doc_id` 作 ID；索引标题和用空格连接的摘要；逐条导入 JSONL | 复用文本组织规则；输入改为 PubMed XML，ID 改为 PMID，写入改为受控 bulk |
-| `sciclaims_backend/modeling/utils.py` 的 `init_searcher` | ColBERT 外部接入分支和 Elasticsearch 分支；所附配置使用 Elasticsearch | 保留两种接入，配置 ColBERT 时优先选择；ColBERT 建库参数等待实际验证 |
+| `sciclaims_backend/modeling/utils.py` 的 `init_searcher` | ColBERT 外部接入分支和 Elasticsearch 分支；所附配置使用 Elasticsearch | 保留两种接入；本项目改为显式 backend 选择，不继承隐式优先级 |
 | 同文件的 `init_verification_dataset` | 整个 JSONL 读入内存字典，以 `doc_id` 查文献 | 不搬入全量内存字典；新服务按 PMID 读取 |
 | `sciclaims_backend/processing/utils.py` 的 `run_claim_analysis` | 消费搜索结果；应用层将分数除以 100，再读取内存数据并核验 | 属于消费方，不迁入检索服务；服务返回原始分数 |
 | `sciclaims_backend/run_claim_analysis_service.py` | Flask 核验服务；结果数默认 3、允许 1–10；启动时加载模型 | 不复制整个服务，只参考结果数约束 |
@@ -195,18 +201,21 @@ literature-search-service/
 本次本地验证：22 个测试通过，1 个真实 Elasticsearch 集成测试因未提供隔离实例而跳过；Python 包的 editable 安装成功。源码请求级验证通过不代表实际引擎排名对照已经完成。
 
 
-## ColBERT 优先接入（当前要求）
+## 可替换检索后端（当前要求）
 
-首版保留两种检索后端；与 SciClaims 一致，提供 ColBERT 配置时优先创建 ColBERT Searcher，仅未配置时选择 Elasticsearch。配置为空、依赖缺失、模型或索引加载失败都应报错，不静默切换后端。两后端不混合召回、不重排、不要求同时运行。
+首版至少正式支持 Elasticsearch/BM25 与 Jina-ColBERT-v2 两个 backend。它们不构成主备关系，也不使用配置顺序作为隐式优先级。
 
-接口实现为 `SearchBackend.search(query, k)`，结果沿用 `SearchHit`，增加 `backend` 标识。ES 返回零起始排名；ColBERT 保留原始排名（已核对的官方版本为一起始），两者均保留各自原始分数，不相互比较或归一化。客户端若需要统一列表序号，可使用结果顺序，不把它与原生 rank 混为一谈。
+`create_search_backend` 的选择规则：
 
-`ColBERTSearch` 接收官方 Searcher 与 `article_lookup(internal_doc_id)`；后者必须从同一个索引对应的数据版本中返回 Article。内部编号不是 PMID，映射缺失应使查询失败，不能跳过。适配层不构造全量内存映射，不决定映射存储实现，也不承诺当前接口能自动检测调用方传入错误版本的映射。持久化索引版本绑定是后续接线的验收项。
+- 只配置一个 backend 时可自动推断；
+- 同时配置多个 backend 时必须显式传入 `backend`；
+- 选择的 backend 初始化失败时直接失败，不静默 fallback；
+- ES-only 使用不要求安装 ColBERT/Jina 运行环境。
 
-`create_search_backend` 延迟导入 ColBERT；ES-only 使用不需要安装 torch/ColBERT。ColBERT 初始化参数原样传给官方 Searcher，不写死模型、GPU、截断长度或索引位置；也不自动下载或构建索引。当前仅提供 Python 接口，还不是可启动的 ColBERT HTTP 服务。
+接口实现为 `SearchBackend.search(query, k)`，结果统一使用 `SearchHit` 并标明 `backend`。Elasticsearch 返回零起始原生排名；Jina/ColBERT 保留其原生排名。各 backend 的原始 score 不归一化，也不跨 backend 直接比较。
 
-独立运行验证尚未作为本项目的已通过证据导入。因此目前不锁定 ColBERT 依赖版本或 Python/CUDA 组合；现有包要求 Python >=3.11，是否兼容验证环境也须核对后明确，接口单测通过不代表环境兼容。ColBERT 每日增量仍需落实修订/删除与索引映射的一致性，不能将查询接入完成称为增量维护完成。
+Jina 适配器接收官方 Searcher 与 `article_lookup(internal_doc_id)`；lookup 必须解析到构建该 index 时同一版本的 Article。内部 PID 不是 PMID，映射缺失必须失败。Jina model/index/mapping 必须预先准备；本项目不自动下载模型或安装 GPU 环境。
 
-实现依据：[官方 Searcher 源码](https://github.com/stanford-futuredata/ColBERT/blob/cc4f3dc91c0b45d2d08c251d9d95178285c65f1c/colbert/searcher.py)。其少量命中时可能返回比 ID 更多的 rank，适配器允许尾部多余 rank，拒绝缺失 rank 或 ID/score 长度不一致。
+Elasticsearch 保留 SciClaims 的 `multi_match` 查询 `title`、`abstract` 作为正式 baseline。它使用完整 title+abstract，不承担 Jina/ColBERT 的 Transformer context 截断约束。其增量 upsert/delete 能力也将作为 #32 后 backend 选择时的重要工程成本对照。
 
-ColBERT 接口调整后本地验证：35 个测试通过，1 个 ES 真实索引对照测试跳过。新增测试覆盖配置优先级、加载失败不回退、延迟导入、内部 ID 映射、原生排名分数、空结果与结果长度校验；未执行 ColBERT 实际模型测试。
+Claim→Evidence 的最终 backend 选择由 #32 决定，第一指标为 gold evidence document Recall@K；Jina 能成功建库不等于应当成为全量唯一后端。
