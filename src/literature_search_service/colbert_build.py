@@ -13,6 +13,9 @@ import struct
 import subprocess
 import sys
 
+DEFAULT_MODEL_ID = "jinaai/jina-colbert-v2"
+DEFAULT_MODEL_REVISION = "a9dc5cd7293d4c71dbbba04829923ba4d0e4f6ea"
+
 
 def verify_inputs(collection: Path, mapping: Path, expected: dict) -> dict:
     """Stream both inputs together; reject changed bytes, IDs and empty text."""
@@ -55,16 +58,73 @@ def verify_inputs(collection: Path, mapping: Path, expected: dict) -> dict:
     return actual
 
 
+def _json_positive_int(path: Path, key: str) -> int | None:
+    if not path.is_file():
+        return None
+    value = json.loads(path.read_text(encoding="utf-8")).get(key)
+    if isinstance(value, str) and value.isdecimal():
+        value = int(value)
+    if type(value) is int and 0 < value <= 1_000_000:
+        return value
+    return None
+
+
+def checkpoint_identity(
+    checkpoint: Path,
+    model_id: str = DEFAULT_MODEL_ID,
+    revision: str = DEFAULT_MODEL_REVISION,
+) -> dict:
+    """Record the frozen Jina model identity plus local config hashes."""
+    result = {
+        "path": str(checkpoint.resolve()),
+        "model_id": model_id,
+        "revision": revision,
+    }
+    for name in ("config.json", "tokenizer_config.json"):
+        path = checkpoint / name
+        result[f"{name}_sha256"] = (
+            hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+        )
+    return result
+
+
+def checkpoint_context_limit(checkpoint: Path) -> int | None:
+    """Return a conservative local context limit when checkpoint metadata declares one."""
+    limits = [
+        _json_positive_int(checkpoint / "config.json", "max_position_embeddings"),
+        _json_positive_int(checkpoint / "tokenizer_config.json", "model_max_length"),
+    ]
+    known = [value for value in limits if value is not None]
+    return min(known) if known else None
+
+
+def validate_build_options(checkpoint: Path, config: dict) -> int | None:
+    """Fail before GPU work when numeric options or local context metadata are invalid."""
+    for key in ("dim", "nbits", "doc_maxlen", "query_maxlen", "index_bsize", "kmeans_niters"):
+        value = config.get(key)
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"{key} must be a positive integer")
+    limit = checkpoint_context_limit(checkpoint)
+    if limit is not None and config["doc_maxlen"] > limit:
+        raise ValueError(
+            f"doc_maxlen {config['doc_maxlen']} exceeds checkpoint context limit {limit}"
+        )
+    if limit is None and config["doc_maxlen"] > 512:
+        raise ValueError(
+            "doc_maxlen above 512 requires local checkpoint context metadata"
+        )
+    return limit
+
+
 def build_index(collection: Path, checkpoint: Path, output: Path, gpus: list[int],
-                doc_maxlen: int) -> str:
+                config_values: dict) -> str:
     """Caller verifies immutable inputs first. Return the authoritative index path."""
     from colbert import Indexer
     from colbert.infra import ColBERTConfig, Run, RunConfig
 
     with Run().context(RunConfig(nranks=len(gpus), gpus=gpus,
                                 root=str(output / "runs"), experiment="build")):
-        config = ColBERTConfig(dim=128, nbits=2, doc_maxlen=doc_maxlen,
-                               query_maxlen=32, index_bsize=64, kmeans_niters=4)
+        config = ColBERTConfig(**config_values)
         indexer = Indexer(checkpoint=str(checkpoint), config=config)
         return str(indexer.index(name="index", collection=str(collection), overwrite=False))
 
@@ -76,12 +136,17 @@ def main(argv=None) -> int:
     parser.add_argument("--mapping", type=Path, required=True)
     parser.add_argument("--expected", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
+    parser.add_argument("--checkpoint-revision", default=DEFAULT_MODEL_REVISION)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--gpus", type=int, nargs="+", default=[0])
-    parser.add_argument("--doc-maxlen", type=int, default=256)
+    parser.add_argument("--dim", type=int, default=128)
+    parser.add_argument("--nbits", type=int, default=2)
+    parser.add_argument("--doc-maxlen", type=int, default=8192)
+    parser.add_argument("--query-maxlen", type=int, default=32)
+    parser.add_argument("--index-bsize", type=int, default=8)
+    parser.add_argument("--kmeans-niters", type=int, default=4)
     args = parser.parse_args(argv)
-    if not 4 <= args.doc_maxlen <= 512:
-        parser.error("doc-maxlen must be between 4 and 512")
     if len(set(args.gpus)) != len(args.gpus) or any(g < 0 for g in args.gpus):
         parser.error("gpus must be distinct non-negative visible device IDs")
     if args.mode == "build" and (
@@ -93,17 +158,39 @@ def main(argv=None) -> int:
     if args.mode == "verify":
         print(json.dumps(actual))
         return 0
+
+    checkpoint = args.checkpoint.resolve()
+    config_values = {
+        "dim": args.dim,
+        "nbits": args.nbits,
+        "doc_maxlen": args.doc_maxlen,
+        "query_maxlen": args.query_maxlen,
+        "index_bsize": args.index_bsize,
+        "kmeans_niters": args.kmeans_niters,
+    }
+    try:
+        context_limit = validate_build_options(checkpoint, config_values)
+    except ValueError as exc:
+        parser.error(str(exc))
+
     output = args.output.resolve()
     # Never reuse a directory containing partial or successful index artifacts.
     output.mkdir(parents=True, exist_ok=False)
-    receipt = dict(status="building", inputs=actual, collection=str(collection),
-                   mapping=str(mapping), checkpoint=str(args.checkpoint.resolve()),
-                   gpus=args.gpus, doc_maxlen=args.doc_maxlen,
-                   runtime_python=sys.version, query_validated=False)
+    receipt = dict(
+        status="building",
+        inputs=actual,
+        collection=str(collection),
+        mapping=str(mapping),
+        checkpoint=checkpoint_identity(checkpoint, args.model_id, args.checkpoint_revision),
+        checkpoint_context_limit=context_limit,
+        gpus=args.gpus,
+        build_config=config_values,
+        runtime_python=sys.version,
+        query_validated=False,
+    )
     try:
         (output / "build.json").write_text(json.dumps(receipt, indent=2))
-        index_path = build_index(collection, args.checkpoint.resolve(), output,
-                                 args.gpus, args.doc_maxlen)
+        index_path = build_index(collection, checkpoint, output, args.gpus, config_values)
         receipt["index_path"] = index_path
         mmap_path = output / "index-mmap"
         subprocess.run([sys.executable, "-m", "colbert.utils.coalesce", "--input",

@@ -1,4 +1,4 @@
-# ColBERT 单分片实验工具
+# Jina-ColBERT-v2 建库工具
 
 包内入口：`python -m literature_search_service.colbert_build`。这是首次整理的
 实验入口，不是全量服务、通用恢复器或受资源监督的作业系统。
@@ -13,13 +13,29 @@ python -m literature_search_service.colbert_build verify \
   --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED"
 ```
 
-`build` 需显式调用，使用预先安装的 ColBERT 和本地 checkpoint，输出目录必须不存在：
+`build` 需显式调用，使用预先安装的 colbert-ai 和本地 Jina-ColBERT-v2 checkpoint，输出目录必须不存在。该 Jina backend 的默认 build profile 为 8K；这不是项目级唯一检索默认：
 
 ```sh
 python -m literature_search_service.colbert_build build \
   --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED" \
-  --checkpoint "$CHECKPOINT" --output "$NEW_BUILD_DIR" --gpus 0 1 --doc-maxlen 256
+  --checkpoint "$JINA_CHECKPOINT" --output "$NEW_BUILD_DIR" --gpus 0
 ```
+
+需要覆盖默认值时可显式传入全部参数；下面示例与当前冻结的 Jina profile 等价，不代表 RTX3060 吞吐已经验收：
+
+```sh
+python -m literature_search_service.colbert_build build \
+  --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED" \
+  --checkpoint "$JINA_CHECKPOINT" --checkpoint-revision "$JINA_REVISION" \
+  --output "$NEW_BUILD_DIR" --gpus 0 \
+  --dim 128 --nbits 2 --doc-maxlen 8192 --query-maxlen 32 \
+  --index-bsize 8 --kmeans-niters 4
+```
+
+长上下文值不会仅凭 CLI 数字放行：工具会从本地 `config.json` /
+`tokenizer_config.json` 读取可用 context metadata；声明的 `doc_maxlen` 超过
+checkpoint 本地上限时会在启动 GPU 之前失败。若 checkpoint 没有可核验的上下文元数据，
+超过 512 的值同样拒绝。构建回执会保存 checkpoint config 哈希、可选 revision 和全部实际参数。
 
 该命令会使用 GPU、内存和磁盘，并生成索引。调用者必须提供资源隔离且保持输入不可变。
 GPU 编号相对于调用者的 CUDA_VISIBLE_DEVICES；不会自动安装、下载、启停服务或恢复旧目录。
@@ -28,12 +44,8 @@ coalesce 使用 Indexer 返回的真实路径，通过同一 Python 的 `-m colb
 `coalesced_not_query_validated`，不能据此宣称查询验收完成。
 
 已测试输入验证、路径交接与失败记录；build/coalesce 测试使用替身。
-历史真实实验使用 Python 3.10.12，而本项目要求 Python >=3.11；新入口尚未完成目标
-环境真实小样本验证。先完成环境兼容 issue，再进行受限冒烟测试；不要直接跑全量。
+历史 ColBERTv2 256-token 实验、Python 3.10 环境和旧分片资产仅作为历史证据保留，
+见[实验复盘](../../docs/colbert-experiment-review.md)，不再作为当前 Jina profile 的默认值。
 
-固定实验参数为 dim=128、nbits=2、query_maxlen=32、index_bsize=64、kmeans_niters=4。
-doc_maxlen=256 是实验默认值；约 253 个正文子词后不进入向量，完整输入文件仍保留。
-模型与源码版本见[实验复盘](../../docs/colbert-experiment-review.md)。
-
-准备/分片、完整版本清单、资源 supervisor、恢复和多分片查询均由后续 issues 跟踪。
-不把旧事故脚本作为正常执行入口。
+当前 Jina profile 的真实专题库 build/reload/query 由 #30 验收；Claim→Evidence retrieval
+价值由 #32 与 Elasticsearch/BM25、MedCPT 同口径比较。完成价值门前不要启动全量建库。
