@@ -3,8 +3,6 @@
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
-from elasticsearch import Elasticsearch
-
 from .contracts import Article, SearchHit
 
 
@@ -22,7 +20,7 @@ def _validate_query(query: str, k: int) -> None:
 class LiteratureSearch:
     """Legacy Elasticsearch adapter kept for comparison/backward integration."""
 
-    def __init__(self, client: Elasticsearch, index: str):
+    def __init__(self, client: Any, index: str):
         self.client = client
         self.index = index
 
@@ -77,7 +75,7 @@ def create_search_backend(
     *,
     jina_options: Mapping[str, Any] | None = None,
     article_lookup: Callable[[int], Article] | None = None,
-    elastic_client: Elasticsearch | None = None,
+    elastic_client: Any | None = None,
     elastic_index: str | None = None,
 ) -> SearchBackend:
     """Create the configured backend without silent fallback.
