@@ -12,7 +12,7 @@ def test_preserves_request_rank_score_and_ties():
     hits = LiteratureSearch(client, 'test').search('  synthetic query  ', 2)
     client.search.assert_called_once_with(index='test', query={
         'multi_match': {'query': '  synthetic query  ', 'fields': ['title', 'abstract']}})
-    assert [(h.pmid, h.rank, h.score) for h in hits] == [('20', 0, 2.5), ('10', 1, 2.5)]
+    assert [(h.pmid, h.rank, h.score, h.backend) for h in hits] == [\n        ('20', 0, 2.5, 'elasticsearch'), ('10', 1, 2.5, 'elasticsearch')]
 
 
 @pytest.mark.parametrize('query,k', [('', 3), (' ', 3), (None, 3), ('x', 0), ('x', 11), ('x', True), ('x', 1.5)])
