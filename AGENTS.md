@@ -10,7 +10,7 @@ owner code, tests, and docs/roadmap.md before changing contracts.
   into the roadmap. Keep stable contracts and operator guidance in the repository.
 - dev is the integration branch. Use one task branch and PR per coherent change.
   Initial repository bootstrap is committed directly to dev; subsequent work uses PRs.
-- johnmuin is a future execution assistant. Only an open issue explicitly assigned
+- johnmuin is the execution assistant. Only an open issue explicitly assigned
   to johnmuin with `Execution gate: READY` authorizes work. A later owner HOLD wins.
   Unassigned issues and milestone checklists are not execution instructions.
 - Work on one assigned issue at a time unless the owner explicitly permits parallel work.
