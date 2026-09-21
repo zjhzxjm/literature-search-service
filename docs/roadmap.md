@@ -1,39 +1,38 @@
 # 首版交付路线图
 
-状态：路线图草案，待确认执行顺序与决策点。已确认需求继续有效；本文未决项不因写入文档而获得批准。
+状态：2026-09-21 已重新收敛 GitHub milestones。首版固定快照交付与 Jina 新 baseline 并行推进；每日更新、构建可靠性和质量/发布完善保持后续独立里程碑。具体运行授权仍以 issue 的 Execution gate 为准。
 
 本文维护总体目标、增量依赖及稳定合同；GitHub milestones/issues 维护当前任务、决策和验收进度，PR 维护代码审查。字段、上游代码和技术约束见[设计文档](design/pubmed-search-v1.md)。
 
-## 2026-09-20 开发基线整理
+## 2026-09-21 milestone 收敛
 
-首个 `dev` 基线收录现有解析/检索包与测试、下载工具、实验复盘、协作模板，
-并新增包内单分片输入校验和显式 build/coalesce 入口。它采用 Indexer 返回路径，
-不复制临时 worker/run.sh 之间的硬编码路径依赖。不包含正式分片器、自动恢复、
-supervisor、十路查询、文本库或部署。原始实验资产保持原状。
+当前只保留五条清晰工作线：
 
-整理前本地验证为 61 passed、1 skipped（真实 ES）；新增工具需合成回归，
-实际 ColBERT 环境与新入口真实执行由后续 milestone 验收。现有 10 片构建结果
-及截断、映射、性能局限见[实验复盘](colbert-experiment-review.md)。
+| GitHub milestone | 当前职责 | 活跃 issues |
+|---|---|---|
+| [M1 首个下游可用版本](https://github.com/zjhzxjm/literature-search-service/milestone/1) | 复用现有 10 片 baseline，完成固定快照的真实查询、PMID/同版本文本与最小 HTTP 闭环 | #1、#5、#6、#9、#13 |
+| [M2 数据更新闭环](https://github.com/zjhzxjm/literature-search-service/milestone/2) | 新增/修订/删除、来源顺序、重放和失败进度 | #11；#12 已完成 |
+| [M3 构建与运行可靠性](https://github.com/zjhzxjm/literature-search-service/milestone/3) | 正式分片、资源 supervisor、恢复身份、年度切换/回退 | #2、#3、#4、#14 |
+| [M4 质量性能与发布](https://github.com/zjhzxjm/literature-search-service/milestone/4) | 冷暖查询、ES 对照、许可与公开历史 | #8、#10、#15 |
+| [M5 Jina 新 baseline](https://github.com/zjhzxjm/literature-search-service/milestone/5) | Jina-ColBERT-v2 长上下文新库、专题子库输入、RTX3060/WSL2 验收与最终全量重建 | #7、#24、#26、#28；PR #25/#27 |
 
-本次整理验证：`pytest -q` 为 77 passed、1 skipped；`bash -n` 与 diff 检查通过；
-使用 `pip wheel --no-deps --no-build-isolation` 构建 wheel 成功。新 ColBERT 工具的
-实际 GPU 建库、重载与目标环境尚未验收；不能用合成测试替代 M1 的真实运行条件。
+### 当前优先级
 
-交付顺序：M1 开发基线与构建工具可复现；M2 同版本文本与全量分片检索闭环；
-M3 可恢复每日更新；M4 HTTP、发布切换与运行验收。具体 issue 不代表运行授权；
-大型实验与存储语义保留原有决策门槛。
+**主交付线 M1**：现有 39,928,371 条、10 片 ColBERTv2 baseline 继续作为首版资产，不等待新库。优先完成环境、快照/文本合同、十片查询归并、完整性拒绝和 HTTP 接入。
 
-| GitHub milestone | 首批 issues |
-|---|---|
-| [M1 开发基线与构建工具](https://github.com/zjhzxjm/literature-search-service/milestone/1) | #1 环境、#2 分片、#3 supervisor、#4 恢复 |
-| [M2 同版本全量查询](https://github.com/zjhzxjm/literature-search-service/milestone/2) | #5 版本合同、#6 查询、#7 截断、#8 性能、#9 清单、#10 ES |
-| [M3 每日更新](https://github.com/zjhzxjm/literature-search-service/milestone/3) | #11 增量语义、#12 下载器 Linux 验收 |
-| [M4 HTTP 与发布](https://github.com/zjhzxjm/literature-search-service/milestone/4) | #13 HTTP、#14 切换、#15 许可与公开历史 |
+**并行改进线 M5**：截断调查已经收敛到 Jina-ColBERT-v2。P40/GTE/512 路线只保留为历史证据，不再占活跃任务。当前顺序固定为：
 
-依赖顺序：#5 冻结版本与文本职责后，#2/#6/#9 落地正式版本清单；#1 先验证运行环境。
-#7/#8 先冻结小样本协议，不直接触发全量重建。#11 依赖 #5 与检索闭环，#13/#14
-依赖检索和更新验收。#10/#12 可在专用隔离环境准备后独立进行。
-任务详情与最新 gate 以 [issues](https://github.com/zjhzxjm/literature-search-service/issues) 为准。
+1. PR #25：关键词筛选生成专题建库输入；
+2. PR #27：正式 build CLI 支持并记录 Jina 8K 配置；
+3. #28：RTX3060 + WSL2 上复用代表性 10k 做真实基准；
+4. #28 通过后才创建最终 39.9M 全量执行 issue；
+5. 新库独立验收后再讨论服务切换。
+
+M5 已完成的证据任务包括 #18、#21、#22、#23 和 PR #19；#20 的 512 全量重建方案已被 Jina 路线替代并关闭。旧 PR #17 的截断修复路线同样已关闭，避免与当前方案并存。
+
+**后续线 M2–M4** 不阻塞 M1 首版固定快照；其中 M3 的可靠构建能力会在新 baseline 和年度生命周期阶段复用，M4 在真实服务可用后再做代表性性能/发布收尾。
+
+任务详情与最新 gate 以 [issues](https://github.com/zjhzxjm/literature-search-service/issues) 为准。Milestone 只表示工作归属，不自动授权 GPU、全量数据写入、部署或生产切换。
 
 ## 目标与边界
 
@@ -156,4 +155,4 @@ R1 的 ES 真实对照可与 ColBERT 结果接收分别完成。优先收尾 Col
 
 状态依次区分：待讨论、可实施、实施中、待验收、已验收。通过验收后创建范围明确的提交；commit、push、合并、发布、部署和运行验收分别记录，不相互替代。当前没有任何增量因为单元测试通过而自动获得全量写入或部署许可。
 
-**下一项执行计划：继续 R0。** 更新可见性与文本一致性语义已确认；接下来讨论解析产物与文献保存方式、版本绑定及保留恢复规则，再补齐接口合同。此期间不新增持久化模型、批量导入、后台调度或全量建库。已经实现的核心解析与查询代码保留，真实 ES 对照和 ColBERT 证据接收可作为独立验证继续推进，不依赖尚未确认的存储架构。
+**当前执行顺序：M1 与 M5 并行。** M1 继续完成现有固定快照的查询/文本/HTTP 闭环；M5 先合并关键词筛选与 Jina 参数化 build 入口，再在 RTX3060/WSL2 上通过 #28 冻结全量参数，之后才授权新 Jina baseline 全量构建。M2–M4 按依赖顺序后续推进，不用旧路线阻塞当前两条主线。
