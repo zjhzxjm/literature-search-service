@@ -13,7 +13,7 @@ python -m literature_search_service.colbert_build verify \
   --collection "$COLLECTION" --mapping "$MAPPING" --expected "$EXPECTED"
 ```
 
-`build` 需显式调用，使用预先安装的 colbert-ai 和本地 Jina-ColBERT-v2 checkpoint，输出目录必须不存在。当前 dev 默认 profile 已切换为 Jina 8K：
+`build` 需显式调用，使用预先安装的 colbert-ai 和本地 Jina-ColBERT-v2 checkpoint，输出目录必须不存在。该 Jina backend 的默认 build profile 为 8K；这不是项目级唯一检索默认：
 
 ```sh
 python -m literature_search_service.colbert_build build \
