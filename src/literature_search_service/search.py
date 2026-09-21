@@ -1,4 +1,4 @@
-"""Query semantics adapted from SciClaims ESSearcher; see THIRD_PARTY_NOTICES.md."""
+"""Query adapters; Jina-ColBERT-v2 is the formal vector-search route."""
 
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
@@ -20,6 +20,8 @@ def _validate_query(query: str, k: int) -> None:
 
 
 class LiteratureSearch:
+    """Legacy Elasticsearch adapter kept for comparison/backward integration."""
+
     def __init__(self, client: Elasticsearch, index: str):
         self.client = client
         self.index = index
@@ -39,12 +41,12 @@ class LiteratureSearch:
         ]
 
 
-class ColBERTSearch:
-    """Wrap an official Searcher with its matching collection's document lookup.
+class JinaColBERTSearch:
+    """Wrap an official Searcher with its matching Jina-ColBERT-v2 collection.
 
-    Lookup must resolve an internal ColBERT document ID to the article used when
-    building that index, not to an independently updated current collection.
-    Missing mappings fail the query; they are never silently dropped.
+    Lookup must resolve an internal document ID to the exact article version used
+    when building that Jina index. Missing mappings fail the query and are never
+    silently dropped.
     """
 
     def __init__(self, searcher: Any, article_lookup: Callable[[int], Article]):
@@ -56,36 +58,43 @@ class ColBERTSearch:
         ids, ranks, scores = self.searcher.search(query, k=k)
         # Official Searcher can return k ranks even when fewer than k IDs match.
         if len(ids) != len(scores) or len(ranks) < len(ids) or len(ids) > k:
-            raise RuntimeError("Inconsistent ColBERT search result lengths")
+            raise RuntimeError("Inconsistent Jina-ColBERT-v2 search result lengths")
         hits = []
         for doc_id, rank, score in zip(ids, ranks, scores):
             article = self.article_lookup(int(doc_id))
-            hits.append(SearchHit(article.pmid, int(rank), float(score),
-                                  article.title, article.abstract, "colbert"))
+            hits.append(SearchHit(
+                article.pmid,
+                int(rank),
+                float(score),
+                article.title,
+                article.abstract,
+                "jina-colbert-v2",
+            ))
         return hits
 
 
 def create_search_backend(
     *,
-    colbert_options: Mapping[str, Any] | None = None,
+    jina_options: Mapping[str, Any] | None = None,
     article_lookup: Callable[[int], Article] | None = None,
     elastic_client: Elasticsearch | None = None,
     elastic_index: str | None = None,
 ) -> SearchBackend:
-    """Match SciClaims selection priority; construction errors never fall back.
+    """Create the configured backend without silent fallback.
 
-    ColBERT is imported only when configured. Its environment, checkpoint and
-    index are prepared externally; this factory does not install or build them.
-    Even an empty supplied ColBERT configuration is an error, not ES selection.
+    Jina-ColBERT-v2 is the formal project route. Its checkpoint and index are
+    prepared externally; this factory does not install, download or build them.
+    Elasticsearch remains only as an explicitly configured legacy adapter. A
+    Jina configuration error never falls back to Elasticsearch.
     """
-    if colbert_options is not None:
-        if not colbert_options.get("index"):
-            raise ValueError("ColBERT requires an index")
+    if jina_options is not None:
+        if not jina_options.get("index"):
+            raise ValueError("Jina-ColBERT-v2 requires an index")
         if article_lookup is None:
-            raise ValueError("ColBERT requires its index-specific article lookup")
+            raise ValueError("Jina-ColBERT-v2 requires its index-specific article lookup")
         from colbert import Searcher
 
-        return ColBERTSearch(Searcher(**dict(colbert_options)), article_lookup)
+        return JinaColBERTSearch(Searcher(**dict(jina_options)), article_lookup)
     if elastic_client is not None and elastic_index:
         return LiteratureSearch(elastic_client, elastic_index)
-    raise ValueError("Configure ColBERT or Elasticsearch")
+    raise ValueError("Configure Jina-ColBERT-v2 or the legacy Elasticsearch adapter")
