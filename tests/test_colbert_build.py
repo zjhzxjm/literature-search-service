@@ -68,8 +68,9 @@ def test_checkpoint_context_limit_and_jina_8k(tmp_path):
     config = dict(dim=128, nbits=2, doc_maxlen=8192, query_maxlen=32,
                   index_bsize=8, kmeans_niters=4)
     assert build.validate_build_options(model, config) == 8194
-    identity = build.checkpoint_identity(model, "fixed-revision")
-    assert identity["revision"] == "fixed-revision"
+    identity = build.checkpoint_identity(model)
+    assert identity["model_id"] == build.DEFAULT_MODEL_ID
+    assert identity["revision"] == build.DEFAULT_MODEL_REVISION
     assert identity["config.json_sha256"] == hashlib.sha256(
         (model / "config.json").read_bytes()
     ).hexdigest()
@@ -105,6 +106,7 @@ def test_build_records_explicit_config_and_returned_path(tmp_path, monkeypatch):
     monkeypatch.setattr(build.subprocess, "run", lambda cmd, **kw: commands.append(cmd))
     args = ["build", *mapping_args(collection, mapping, manifest),
             "--checkpoint", str(model), "--checkpoint-revision", "rev123",
+            "--model-id", "jinaai/jina-colbert-v2",
             "--output", str(output), "--gpus", "0", "--doc-maxlen", "8192",
             "--index-bsize", "8"]
     assert build.main(args) == 0
@@ -115,6 +117,7 @@ def test_build_records_explicit_config_and_returned_path(tmp_path, monkeypatch):
     assert receipt["status"] == "coalesced_not_query_validated"
     assert receipt["query_validated"] is False
     assert receipt["checkpoint_context_limit"] == 8194
+    assert receipt["checkpoint"]["model_id"] == "jinaai/jina-colbert-v2"
     assert receipt["checkpoint"]["revision"] == "rev123"
     assert receipt["build_config"]["doc_maxlen"] == 8192
     with pytest.raises(FileExistsError):
@@ -132,5 +135,29 @@ def test_build_failure_is_recorded(tmp_path, monkeypatch):
     output = tmp_path / "failed"
     with pytest.raises(RuntimeError, match="simulated"):
         build.main(["build", *mapping_args(collection, mapping, manifest),
-                    "--checkpoint", str(model), "--output", str(output)])
+                    "--checkpoint", str(model), "--output", str(output),
+                    "--doc-maxlen", "256"])
     assert json.loads((output / "build.json").read_text())["status"] == "failed"
+
+
+def test_jina_is_the_default_build_profile(tmp_path, monkeypatch):
+    collection, mapping, _, manifest = inputs(tmp_path)
+    model = checkpoint(tmp_path, context=8194, tokenizer_limit=8194)
+    output = tmp_path / "jina-default"
+    captured = {}
+
+    def fake_build(collection_arg, checkpoint_arg, output_arg, gpus_arg, config_arg):
+        captured.update(config_arg)
+        return str(tmp_path / "index")
+
+    monkeypatch.setattr(build, "build_index", fake_build)
+    monkeypatch.setattr(build.subprocess, "run", lambda *a, **kw: None)
+    build.main([
+        "build", *mapping_args(collection, mapping, manifest),
+        "--checkpoint", str(model), "--output", str(output),
+    ])
+    receipt = json.loads((output / "build.json").read_text())
+    assert captured["doc_maxlen"] == 8192
+    assert captured["index_bsize"] == 8
+    assert receipt["checkpoint"]["model_id"] == build.DEFAULT_MODEL_ID
+    assert receipt["checkpoint"]["revision"] == build.DEFAULT_MODEL_REVISION
