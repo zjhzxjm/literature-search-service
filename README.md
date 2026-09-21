@@ -4,7 +4,7 @@
 
 ## 项目状态
 
-项目处于早期开发阶段。当前正式检索路线已切换为 **Jina-ColBERT-v2**；已提供 PubMed 核心字段解析、Jina/Stanford ColBERT Searcher 适配和建库输入校验。Elasticsearch 代码仅保留为 legacy/reference 适配，不再是当前主线。尚未提供稳定 HTTP 服务或完整专题增量发布。
+项目处于早期开发阶段。已提供 PubMed 核心字段解析、Elasticsearch 检索封装和 ColBERT 接口适配，尚未提供 HTTP 服务、可恢复导入流程或稳定 API。
 
 `dev` 是开发集成分支。通过 GitHub milestones 定义交付、issues 记录任务与决策、
 PR 审查变更；协作规则见 [AGENTS.md](AGENTS.md)。首版不自动运行 CI 或模型任务。
@@ -55,19 +55,6 @@ LSS_TEST_ES_URL=http://localhost:19200 .venv/bin/python -m pytest -q -m integrat
 
 ## 检索后端
 
-当前正式后端为 **Jina-ColBERT-v2**，索引与检索继续复用 Stanford ColBERT/colbert-ai 体系。项目默认建库 profile 固定为：
+提供 ColBERT 配置时优先使用 ColBERT，仅未配置时选择 Elasticsearch。模型或索引加载失败不会自动切换后端；结果中的 `backend` 标明来源，`rank` 和 `score` 保留后端原始值（ES rank 从 0 开始，ColBERT 当前对接版本从 1 开始）。
 
-- model: `jinaai/jina-colbert-v2`
-- revision: `a9dc5cd7293d4c71dbbba04829923ba4d0e4f6ea`
-- dim=128
-- nbits=2
-- doc_maxlen=8192
-- query_maxlen=32
-- index_bsize=8
-- kmeans_niters=4
-
-正式搜索通过 `create_search_backend(jina_options=..., article_lookup=...)` 接入；结果中的 `backend` 为 `jina-colbert-v2`。Jina 配置或模型加载失败时不会静默回退到其他后端。
-
-Elasticsearch 适配类暂时保留用于历史兼容/对照，但不属于当前 Jina 专题库与全量 baseline 主线。
-
-模型、索引和映射必须预先准备；项目不会自动下载模型或安装 CUDA/PyTorch。关键词专题输入、Jina 建库、专题增量与 RTX3060 全量执行顺序见 [roadmap](docs/roadmap.md)。
+ColBERT 通过 `create_search_backend(colbert_options=..., article_lookup=...)` 接入：初始化参数转交官方 Searcher，`article_lookup` 负责把同一索引版本的内部文档编号映射为带 PMID 的 Article。索引、模型和映射必须预先准备。当前 ColBERT 依赖环境仍在独立验证，未打包或自动安装；接口测试使用替身，不代表真实模型已在本项目验证通过。
