@@ -13,6 +13,9 @@ import struct
 import subprocess
 import sys
 
+DEFAULT_MODEL_ID = "jinaai/jina-colbert-v2"
+DEFAULT_MODEL_REVISION = "a9dc5cd7293d4c71dbbba04829923ba4d0e4f6ea"
+
 
 def verify_inputs(collection: Path, mapping: Path, expected: dict) -> dict:
     """Stream both inputs together; reject changed bytes, IDs and empty text."""
@@ -66,9 +69,17 @@ def _json_positive_int(path: Path, key: str) -> int | None:
     return None
 
 
-def checkpoint_identity(checkpoint: Path, revision: str | None = None) -> dict:
-    """Record local checkpoint config identity without loading or downloading a model."""
-    result = {"path": str(checkpoint.resolve()), "revision": revision}
+def checkpoint_identity(
+    checkpoint: Path,
+    model_id: str = DEFAULT_MODEL_ID,
+    revision: str = DEFAULT_MODEL_REVISION,
+) -> dict:
+    """Record the frozen Jina model identity plus local config hashes."""
+    result = {
+        "path": str(checkpoint.resolve()),
+        "model_id": model_id,
+        "revision": revision,
+    }
     for name in ("config.json", "tokenizer_config.json"):
         path = checkpoint / name
         result[f"{name}_sha256"] = (
@@ -125,14 +136,15 @@ def main(argv=None) -> int:
     parser.add_argument("--mapping", type=Path, required=True)
     parser.add_argument("--expected", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path)
-    parser.add_argument("--checkpoint-revision")
+    parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
+    parser.add_argument("--checkpoint-revision", default=DEFAULT_MODEL_REVISION)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--gpus", type=int, nargs="+", default=[0])
     parser.add_argument("--dim", type=int, default=128)
     parser.add_argument("--nbits", type=int, default=2)
-    parser.add_argument("--doc-maxlen", type=int, default=256)
+    parser.add_argument("--doc-maxlen", type=int, default=8192)
     parser.add_argument("--query-maxlen", type=int, default=32)
-    parser.add_argument("--index-bsize", type=int, default=64)
+    parser.add_argument("--index-bsize", type=int, default=8)
     parser.add_argument("--kmeans-niters", type=int, default=4)
     args = parser.parse_args(argv)
     if len(set(args.gpus)) != len(args.gpus) or any(g < 0 for g in args.gpus):
@@ -169,7 +181,7 @@ def main(argv=None) -> int:
         inputs=actual,
         collection=str(collection),
         mapping=str(mapping),
-        checkpoint=checkpoint_identity(checkpoint, args.checkpoint_revision),
+        checkpoint=checkpoint_identity(checkpoint, args.model_id, args.checkpoint_revision),
         checkpoint_context_limit=context_limit,
         gpus=args.gpus,
         build_config=config_values,
